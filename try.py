@@ -1,42 +1,71 @@
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import matplotlib.pyplot as plt
+
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM, Dense, Input
+from tensorflow.keras.optimizers import Adam
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-import joblib
+from sklearn.metrics import mean_squared_error
 
-file_path = "D:\\Users\\sghat\\Desktop\\Final project\\lstm1\\signal_metrics.csv"
-df = pd.read_csv(file_path)
+# Load CSV
+df = pd.read_csv("D:\\Users\\sghat\\Desktop\\Final project\\lstm1\\book1.csv")
 
-features = ['Latency (ms)', 'Data Throughput (Mbps)', 'Signal Strength (dBm)']
-df = df[features].dropna()
+# Use only numeric part
+df = df[['Data Throughput (Mbps)']].dropna()
 
+# Scale data
 scaler = MinMaxScaler()
-features_scaled = scaler.fit_transform(df)
-joblib.dump(scaler, "scaler.pkl")
+scaled = scaler.fit_transform(df)
 
+# Create sequences
 X, y = [], []
 time_steps = 10
-for i in range(len(features_scaled) - time_steps):
-    X.append(features_scaled[i:i+time_steps])
-    y.append(features_scaled[i+time_steps][1])
-
+for i in range(len(scaled) - time_steps):
+    X.append(scaled[i:i+time_steps])
+    y.append(scaled[i+time_steps])
 X, y = np.array(X), np.array(y)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, shuffle=False
-)
+# Split
+split = int(len(X) * 0.8)
+X_train, X_test = X[:split], X[split:]
+y_train, y_test = y[:split], y[split:]
 
+# Build model
 model = Sequential([
-    LSTM(128, activation='tanh', return_sequences=True, input_shape=(time_steps, len(features))),
-    LSTM(128, activation='tanh'),
-    Dense(64, activation='tanh'),
+    Input(shape=(time_steps, 1)),
+    LSTM(128, activation='relu', return_sequences=True),
+    LSTM(128, activation='relu'),
+    Dense(64, activation='relu'),
     Dense(1)
 ])
 
-model.compile(optimizer='adam', loss='mse')
-model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1)
+# Compile
+model.compile(optimizer=Adam(), loss='mean_squared_error')
 
-model.save("lstm_network_usage_model.h5")
+# Fit model (💡THIS creates 'history' variable)
+history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_split=0.1)
+
+# Plot training/validation loss
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Val Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.title('Training & Validation Loss')
+plt.legend()
+plt.show()
+
+# Predict
+y_pred = model.predict(X_test).flatten()
+
+# Evaluation
+mse = mean_squared_error(y_test, y_pred)
+print(f"Test MSE: {mse:.6f}")
+
+# Plot actual vs predicted
+plt.figure(figsize=(12, 5))
+plt.plot(y_test[:100], label='Actual', color='blue')
+plt.plot(y_pred[:100], label='Predicted', color='red', linestyle='--')
+plt.title("Actual vs Predicted Throughput (First 100)")
+plt.legend()
+plt.show()
